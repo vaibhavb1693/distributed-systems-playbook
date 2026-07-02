@@ -1,0 +1,45 @@
+version: "3.9"
+
+# FinFlow Redis Rate Limiter pattern — one service, 5 algorithms, each its own endpoint
+# prefix, all backed by atomic Lua scripts against the same partner-tier limit.
+#
+#   docker-compose up -d --build
+#
+# Redis host port offset from other patterns' (6381, vs idempotent-consumer's 6380) so
+# stacks could run concurrently later without colliding.
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: finflow-ratelimiter-redis
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  open-banking-api:
+    build:
+      context: ./open-banking-api
+      dockerfile: Dockerfile
+    container_name: finflow-open-banking-api
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVER_PORT: 8111
+    ports:
+      - "8111:8111"
+    networks:
+      - default
+      - finflow-net
+
+networks:
+  # Created by ../observability/docker-compose.yml — bring that stack up first.
+  finflow-net:
+    external: true

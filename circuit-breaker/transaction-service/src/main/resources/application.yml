@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: transaction-service
+
+server:
+  port: ${SERVER_PORT:8091}
+
+fraud:
+  service:
+    url: ${FRAUD_SERVICE_URL:http://localhost:8092}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      fraudCircuitBreaker:
+        registerHealthIndicator: true
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        slowCallDurationThreshold: 2s
+        slowCallRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+
+  retry:
+    instances:
+      fraudCircuitBreaker:
+        maxAttempts: 3
+        waitDuration: 200ms
+        retryExceptions:
+          - java.io.IOException
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+
+  bulkhead:
+    instances:
+      fraudCircuitBreaker:
+        maxConcurrentCalls: 10
+        maxWaitDuration: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,circuitbreakers,circuitbreakerevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true

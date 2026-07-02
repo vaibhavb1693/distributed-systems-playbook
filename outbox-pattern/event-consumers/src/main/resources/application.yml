@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: event-consumers
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+    listener:
+      ack-mode: RECORD
+
+server:
+  port: ${SERVER_PORT:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    distribution:
+      # Bracket the key: it contains dots, which Spring's relaxed YAML binding would
+      # otherwise treat as nested map levels rather than a literal meter name.
+      percentiles-histogram:
+        "[outbox.event.latency]": true

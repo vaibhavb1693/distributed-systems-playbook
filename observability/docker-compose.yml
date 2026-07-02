@@ -1,0 +1,53 @@
+version: "3.9"
+
+# Shared observability stack for the distributed-systems-playbook.
+# Bring this up FIRST — it creates the `finflow-net` external network that each
+# pattern's own docker-compose.yml joins (only the app services that expose
+# /actuator/prometheus join it; infra containers like Postgres/Kafka do not).
+#
+#   cd observability && docker-compose up -d
+#   cd ../outbox-pattern && docker-compose --profile polling up -d --build
+#
+# Grafana: http://localhost:3000 (admin/admin), dashboards auto-provisioned.
+# Prometheus: http://localhost:9090
+
+services:
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: finflow-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - finflow-net
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: finflow-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - finflow-net
+
+networks:
+  # Explicit name (not compose-project-prefixed) so other patterns' compose files
+  # can reference this exact string as `external: true`.
+  finflow-net:
+    name: finflow-net
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

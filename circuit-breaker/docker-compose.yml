@@ -1,0 +1,46 @@
+version: "3.9"
+
+# FinFlow Circuit Breaker pattern — transaction-service calls fraud-detection-service
+# synchronously, wrapped in a Resilience4j circuit breaker + retry + bulkhead.
+#
+#   docker-compose up -d --build
+#
+# No profiles needed — unlike outbox-pattern, there's only one topology here.
+# Demo the circuit tripping via fraud-detection-service's /admin/degrade endpoint
+# (see README.md for the full script).
+
+services:
+
+  fraud-detection-service:
+    build:
+      context: ./fraud-detection-service
+      dockerfile: Dockerfile
+    container_name: finflow-fraud-detection-service
+    environment:
+      SERVER_PORT: 8092
+    ports:
+      - "8092:8092"
+    networks:
+      - default
+      - finflow-net
+
+  transaction-service:
+    build:
+      context: ./transaction-service
+      dockerfile: Dockerfile
+    container_name: finflow-transaction-service
+    depends_on:
+      - fraud-detection-service
+    environment:
+      SERVER_PORT: 8091
+      FRAUD_SERVICE_URL: http://fraud-detection-service:8092
+    ports:
+      - "8091:8091"
+    networks:
+      - default
+      - finflow-net
+
+networks:
+  # Created by ../observability/docker-compose.yml — bring that stack up first.
+  finflow-net:
+    external: true

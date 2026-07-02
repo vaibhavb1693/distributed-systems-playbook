@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # Only one of the two user-service targets is ever actually running — both profiles
+  # bind to host port 8081 in outbox-pattern/docker-compose.yml, so polling and CDC
+  # can't run concurrently. Whichever one isn't up will show as DOWN in Prometheus;
+  # that's expected, not a misconfiguration.
+  - job_name: user-service-polling
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-user-service-polling:8081"]
+        labels:
+          mode: polling
+
+  - job_name: user-service-cdc
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-user-service-cdc:8081"]
+        labels:
+          mode: cdc
+
+  - job_name: event-consumers
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-event-consumers:8082"]

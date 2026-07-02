@@ -1,0 +1,125 @@
+version: "3.9"
+
+# FinFlow Idempotent Consumer pattern — loan-application-service publishes 4 loan lifecycle
+# events, loan-processing-service consumes them with 4 different dedup strategies.
+#
+#   docker-compose up -d --build
+#
+# Host ports for Postgres/Redis/Kafka are deliberately offset from outbox-pattern's
+# (5433/6380/9093 instead of 5432/6379/9092) so both pattern stacks *could* run
+# concurrently later without colliding, even though each is normally run standalone.
+
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: finflow-idempotent-postgres
+    environment:
+      POSTGRES_USER: finflow
+      POSTGRES_PASSWORD: finflow
+      POSTGRES_DB: finflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finflow -d finflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: finflow-idempotent-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: finflow-idempotent-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: finflow-idempotent-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29093,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9093:9093"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9093"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  loan-application-service:
+    build:
+      context: ./loan-application-service
+      dockerfile: Dockerfile
+    container_name: finflow-loan-application-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29093
+      SERVER_PORT: 8101
+    ports:
+      - "8101:8101"
+    networks:
+      - default
+      - finflow-net
+
+  loan-processing-service:
+    build:
+      context: ./loan-processing-service
+      dockerfile: Dockerfile
+    container_name: finflow-loan-processing-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/finflow
+      DB_USERNAME: finflow
+      DB_PASSWORD: finflow
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29093
+      SERVER_PORT: 8102
+    ports:
+      - "8102:8102"
+    networks:
+      - default
+      - finflow-net
+
+volumes:
+  postgres_data:
+
+networks:
+  # Created by ../observability/docker-compose.yml — bring that stack up first.
+  finflow-net:
+    external: true

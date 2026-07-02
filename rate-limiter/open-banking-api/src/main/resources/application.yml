@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: open-banking-api
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6381}
+
+server:
+  port: ${SERVER_PORT:8111}
+
+rate-limiter:
+  tiers:
+    FREE:
+      limit: 60
+      window-seconds: 60
+      burst-capacity: 60
+    PRO:
+      limit: 1000
+      window-seconds: 60
+      burst-capacity: 1000
+    ENTERPRISE:
+      limit: 10000
+      window-seconds: 60
+      burst-capacity: 10500
+
+  # Demo partner registry — no onboarding DB, just a fixed set for the demo/comparison.
+  partners:
+    partner-free-1: FREE
+    partner-pro-1: PRO
+    partner-enterprise-1: ENTERPRISE
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always

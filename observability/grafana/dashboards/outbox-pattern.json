@@ -1,0 +1,87 @@
+{
+  "uid": "outbox-pattern",
+  "title": "Outbox Pattern — Polling vs CDC",
+  "description": "Compares Approach A (polling) and Approach B (Debezium CDC) for the outbox pattern demo in outbox-pattern/. Only one mode is ever running at a time; run the Gatling load test against each in turn to compare.",
+  "tags": ["distributed-systems-playbook", "outbox-pattern"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Event Latency (p50 / p95) by Mode",
+      "description": "End-to-end latency from outbox row creation (Postgres commit) to consumer receipt, tagged by publishing mode. This is the star metric for comparing polling vs CDC.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(outbox_event_latency_seconds_bucket[$__rate_interval])) by (le, mode))",
+          "legendFormat": "{{mode}} p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum(rate(outbox_event_latency_seconds_bucket[$__rate_interval])) by (le, mode))",
+          "legendFormat": "{{mode}} p95"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Event Throughput by Mode",
+      "description": "Events delivered per second, tagged by mode. Reuses the latency Timer's own count series rather than a separate counter.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(outbox_event_latency_seconds_count[$__rate_interval])) by (mode)",
+          "legendFormat": "{{mode}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Polling Backlog (PENDING outbox events)",
+      "description": "Polling mode only — this bean doesn't exist under the CDC profile, so expect \"No data\" when running --profile cdc. That's correct: CDC never updates outbox row status (WAL is the source of truth).",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "outbox_backlog_size" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "bargauge",
+      "title": "Avg Latency by Topic & Mode",
+      "description": "Per-event-type latency breakdown (registration vs profile update vs KYC update), split by mode.",
+      "gridPos": { "h": 7, "w": 16, "x": 8, "y": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(outbox_event_latency_seconds_sum) by (mode, topic) / sum(outbox_event_latency_seconds_count) by (mode, topic)",
+          "legendFormat": "{{mode}} / {{topic}}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,197 @@
+version: "3.9"
+
+# FinFlow Outbox Pattern — full stack
+#
+# Approach A (Polling):  docker-compose --profile polling up
+# Approach B (CDC):      docker-compose --profile cdc up
+#
+# Both approaches are fully automated — no manual steps after docker-compose up.
+# For CDC, the 'init-connector' service waits for Kafka Connect to be healthy,
+# then registers the Debezium connector automatically via its REST API.
+#
+# Postgres has wal_level=logical enabled unconditionally so the same DB image
+# works for both approaches without rebuild.
+
+services:
+
+  # ─── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:15
+    container_name: finflow-postgres
+    environment:
+      POSTGRES_USER: finflow
+      POSTGRES_PASSWORD: finflow
+      POSTGRES_DB: finflow
+    command: >
+      postgres
+        -c wal_level=logical
+        -c max_replication_slots=5
+        -c max_wal_senders=5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finflow -d finflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: finflow-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: finflow-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ─── Approach B only: Kafka Connect with Debezium ───────────────────────────
+
+  kafka-connect:
+    image: quay.io/debezium/connect:2.5
+    container_name: finflow-kafka-connect
+    profiles: ["cdc"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: finflow-connect-group
+      CONFIG_STORAGE_TOPIC: finflow_connect_configs
+      OFFSET_STORAGE_TOPIC: finflow_connect_offsets
+      STATUS_STORAGE_TOPIC: finflow_connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/connectors || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # Registers the Debezium connector automatically once Kafka Connect is healthy.
+  # Uses 'restart: on-failure' so it retries if Connect isn't ready yet.
+  # This eliminates the need for any manual curl commands after startup.
+  init-connector:
+    image: curlimages/curl:8.5.0
+    container_name: finflow-init-connector
+    profiles: ["cdc"]
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ./debezium/connector-config.json:/connector-config.json:ro
+    command: >
+      sh -c "curl -f -X POST http://kafka-connect:8083/connectors -H 'Content-Type: application/json' -d @/connector-config.json && echo 'Debezium connector registered successfully.'"
+    restart: on-failure
+
+  # ─── Application Services ───────────────────────────────────────────────────
+
+  user-service-polling:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: finflow-user-service-polling
+    profiles: ["polling"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/finflow
+      DB_USERNAME: finflow
+      DB_PASSWORD: finflow
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_PROFILES_ACTIVE: default
+      SERVER_PORT: 8081
+    ports:
+      - "8081:8081"
+    # Also joins the shared observability network so Prometheus (in ../observability/)
+    # can scrape /actuator/prometheus. 'default' must stay listed explicitly — once a
+    # service declares any networks: key, Compose stops auto-joining it to 'default'.
+    networks:
+      - default
+      - finflow-net
+
+  user-service-cdc:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: finflow-user-service-cdc
+    profiles: ["cdc"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/finflow
+      DB_USERNAME: finflow
+      DB_PASSWORD: finflow
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_PROFILES_ACTIVE: cdc
+      SERVER_PORT: 8081
+    ports:
+      - "8081:8081"
+    networks:
+      - default
+      - finflow-net
+
+  event-consumers:
+    build:
+      context: ./event-consumers
+      dockerfile: Dockerfile
+    container_name: finflow-event-consumers
+    profiles: ["polling", "cdc"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SERVER_PORT: 8082
+    ports:
+      - "8082:8082"
+    networks:
+      - default
+      - finflow-net
+
+volumes:
+  postgres_data:
+
+networks:
+  # Created by ../observability/docker-compose.yml — bring that stack up first.
+  # 'external: true' means this compose file only references it, never creates it.
+  finflow-net:
+    external: true

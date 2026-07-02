@@ -1,0 +1,7 @@
+# CDC Profile — Approach B: Debezium watches the Postgres WAL directly.
+# The OutboxPoller is disabled; Debezium + Kafka Connect handle publishing.
+# Everything else (DB writes, domain logic) is identical to the polling approach.
+outbox:
+  mode: cdc
+  poller:
+    enabled: false
