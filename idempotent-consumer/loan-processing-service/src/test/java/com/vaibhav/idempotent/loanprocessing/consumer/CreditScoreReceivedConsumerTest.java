@@ -2,7 +2,7 @@ package com.vaibhav.idempotent.loanprocessing.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaibhav.idempotent.loanprocessing.repository.LoanApplicationRepository;
-import com.vaibhav.idempotent.loanprocessing.repository.ProcessedCreditEventRepository;
+import com.vaibhav.idempotent.loanprocessing.service.ProcessedCreditEventInsertService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 class CreditScoreReceivedConsumerTest {
 
     @Mock
-    private ProcessedCreditEventRepository processedCreditEventRepository;
+    private ProcessedCreditEventInsertService processedCreditEventInsertService;
 
     @Mock
     private LoanApplicationRepository loanApplicationRepository;
@@ -35,7 +35,7 @@ class CreditScoreReceivedConsumerTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        consumer = new CreditScoreReceivedConsumer(processedCreditEventRepository, loanApplicationRepository, objectMapper, meterRegistry);
+        consumer = new CreditScoreReceivedConsumer(processedCreditEventInsertService, loanApplicationRepository, objectMapper, meterRegistry);
     }
 
     @Test
@@ -45,7 +45,7 @@ class CreditScoreReceivedConsumerTest {
 
         consumer.onCreditScoreReceived(buildRecord(eventId, loanId, 720));
 
-        verify(processedCreditEventRepository).insertOrThrow(eq(eventId), eq(loanId), any(LocalDateTime.class));
+        verify(processedCreditEventInsertService).insertOrThrow(eq(eventId), eq(loanId), any(LocalDateTime.class));
         verify(loanApplicationRepository).updateCreditScore(loanId, 720);
         assertThat(outcomeCount("processed")).isEqualTo(1.0);
     }
@@ -55,7 +55,7 @@ class CreditScoreReceivedConsumerTest {
         UUID eventId = UUID.randomUUID();
         UUID loanId = UUID.randomUUID();
         doThrow(new DataIntegrityViolationException("duplicate key"))
-                .when(processedCreditEventRepository).insertOrThrow(eq(eventId), eq(loanId), any(LocalDateTime.class));
+                .when(processedCreditEventInsertService).insertOrThrow(eq(eventId), eq(loanId), any(LocalDateTime.class));
 
         consumer.onCreditScoreReceived(buildRecord(eventId, loanId, 720));
 

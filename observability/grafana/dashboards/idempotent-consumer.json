@@ -1,0 +1,50 @@
+{
+  "uid": "idempotent-consumer",
+  "title": "Idempotent Consumer — 4 Dedup Strategies",
+  "description": "loan-processing-service. One panel pair per strategy: processed vs duplicate rate, so you can see each dedup mechanism actually catching redeliveries in real time.",
+  "tags": ["distributed-systems-playbook", "idempotent-consumer"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Events by Strategy & Outcome (rate)",
+      "description": "All 4 strategies on one panel — processed vs duplicate, per strategy. duplicate>0 proves dedup is actually catching redeliveries, not just passing everything through.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(idempotent_consumer_events_total[$__rate_interval])) by (strategy, outcome)",
+          "legendFormat": "{{strategy}} / {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "bargauge",
+      "title": "Total Processed vs Duplicate (cumulative)",
+      "description": "Raw counts since this service started — a quick sanity check that every strategy has seen at least one duplicate suppressed.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(idempotent_consumer_events_total) by (strategy, outcome)",
+          "legendFormat": "{{strategy}} / {{outcome}}"
+        }
+      ]
+    }
+  ]
+}

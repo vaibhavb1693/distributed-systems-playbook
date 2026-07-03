@@ -19,6 +19,17 @@ import org.springframework.web.client.RestTemplate;
  * Resilience4j's documented default: Retry(outer) -> CircuitBreaker -> Bulkhead(inner,
  * closest to the actual call). A CallNotPermittedException (circuit OPEN) is cheap to
  * retry — no network round-trip — so Retry wrapping CircuitBreaker doesn't waste real work.
+ *
+ * fallbackMethod MUST live on the outermost annotation (@Retry), not @CircuitBreaker.
+ * Confirmed by live testing: a fallback attached to an inner annotation's aspect resolves
+ * the call to a normal return (the fallback's result) before the exception ever propagates
+ * to an outer annotation — so a fallback on @CircuitBreaker silently swallows every failure
+ * before @Retry ever sees anything to retry (Retry's own metrics showed 100%
+ * "successful_without_retry" even while genuinely failing calls were happening). Moving the
+ * fallback to @Retry lets each individual attempt reach CircuitBreaker's failure-rate
+ * tracking normally, retries actually happen up to maxAttempts, and only the fully-exhausted
+ * failure (or an immediate CallNotPermittedException when the circuit is already OPEN, which
+ * isn't in retryExceptions so it skips straight past retry) invokes the fallback.
  */
 @Component
 @RequiredArgsConstructor
@@ -31,8 +42,8 @@ public class FraudDetectionClientImpl implements FraudDetectionClient {
     private String fraudServiceUrl;
 
     @Override
-    @Retry(name = "fraudCircuitBreaker")
-    @CircuitBreaker(name = "fraudCircuitBreaker", fallbackMethod = "fallbackAssessRisk")
+    @Retry(name = "fraudCircuitBreaker", fallbackMethod = "fallbackAssessRisk")
+    @CircuitBreaker(name = "fraudCircuitBreaker")
     @Bulkhead(name = "fraudCircuitBreaker")
     public RiskAssessment assessRisk(TransactionRequest request) {
         FraudScoreRequest scoreRequest = new FraudScoreRequest(request.payerId(), request.payeeId(), request.amount());

@@ -1,0 +1,89 @@
+{
+  "uid": "circuit-breaker",
+  "title": "Circuit Breaker — fraudCircuitBreaker",
+  "description": "transaction-service's Resilience4j circuit breaker around fraud-detection-service. All metrics here are auto-instrumented by resilience4j-spring-boot3 — zero custom application code.",
+  "tags": ["distributed-systems-playbook", "circuit-breaker"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Circuit State (0/1 step per state)",
+      "description": "Exactly one of closed/open/half_open is 1 at any time. Watch this during a degrade/reset demo to see CLOSED -> OPEN -> HALF_OPEN -> CLOSED.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "resilience4j_circuitbreaker_state{name=\"fraudCircuitBreaker\", state=\"closed\"}", "legendFormat": "closed" },
+        { "refId": "B", "expr": "resilience4j_circuitbreaker_state{name=\"fraudCircuitBreaker\", state=\"open\"}", "legendFormat": "open" },
+        { "refId": "C", "expr": "resilience4j_circuitbreaker_state{name=\"fraudCircuitBreaker\", state=\"half_open\"}", "legendFormat": "half_open" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Call Outcomes by Kind",
+      "description": "successful / failed / ignored calls per second, plus calls rejected outright because the circuit was OPEN (a separate metric — CallNotPermittedException never reaches the call-outcome counter).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(resilience4j_circuitbreaker_calls_seconds_count[$__rate_interval])) by (kind)", "legendFormat": "{{kind}}" },
+        { "refId": "B", "expr": "sum(rate(resilience4j_circuitbreaker_not_permitted_calls_total[$__rate_interval]))", "legendFormat": "not_permitted (circuit OPEN)" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Retry Outcomes by Kind",
+      "description": "successful_without_retry means the first attempt worked. failed_with_retry means all attempts (including retries) failed and the fallback fired.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(resilience4j_retry_calls_total[$__rate_interval])) by (kind)", "legendFormat": "{{kind}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Bulkhead Concurrency",
+      "description": "available vs max concurrent calls permitted to fraud-detection-service, independent of circuit state.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "resilience4j_bulkhead_available_concurrent_calls{name=\"fraudCircuitBreaker\"}", "legendFormat": "available" },
+        { "refId": "B", "expr": "resilience4j_bulkhead_max_allowed_concurrent_calls{name=\"fraudCircuitBreaker\"}", "legendFormat": "max allowed" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Failure Rate / Slow Call Rate",
+      "description": "-1% means not enough calls yet in the sliding window (minimumNumberOfCalls=5) to compute a rate.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent" },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "resilience4j_circuitbreaker_failure_rate{name=\"fraudCircuitBreaker\"}", "legendFormat": "failure rate" },
+        { "refId": "B", "expr": "resilience4j_circuitbreaker_slow_call_rate{name=\"fraudCircuitBreaker\"}", "legendFormat": "slow call rate" }
+      ]
+    }
+  ]
+}

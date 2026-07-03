@@ -1,0 +1,67 @@
+{
+  "uid": "rate-limiter",
+  "title": "Redis Rate Limiter — 5 Algorithms Compared",
+  "description": "open-banking-api. All 5 algorithms enforce the same partner-tier limit — differences in the shape of allowed/rejected traffic below come purely from the algorithm, not the nominal limit.",
+  "tags": ["distributed-systems-playbook", "rate-limiter"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Allowed Rate by Algorithm",
+      "description": "Requests/sec actually let through, per algorithm. Compare shapes under the same offered load: token-bucket should absorb bursts, leaky-bucket should stay flattest, fixed-window should show boundary steps.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(ratelimit_requests_total{outcome=\"allowed\"}[$__rate_interval])) by (algorithm)",
+          "legendFormat": "{{algorithm}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Rejected Rate by Algorithm",
+      "description": "429s/sec per algorithm — the inverse view of the same comparison.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(ratelimit_requests_total{outcome=\"rejected\"}[$__rate_interval])) by (algorithm)",
+          "legendFormat": "{{algorithm}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "Total Allowed vs Rejected (cumulative, by algorithm)",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ratelimit_requests_total) by (algorithm, outcome)",
+          "legendFormat": "{{algorithm}} / {{outcome}}"
+        }
+      ]
+    }
+  ]
+}

@@ -24,3 +24,38 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     static_configs:
       - targets: ["finflow-event-consumers:8082"]
+
+  - job_name: transaction-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-transaction-service:8091"]
+
+  - job_name: fraud-detection-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-fraud-detection-service:8092"]
+
+  - job_name: loan-application-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-loan-application-service:8101"]
+
+  - job_name: loan-processing-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-loan-processing-service:8102"]
+
+  - job_name: open-banking-api
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-open-banking-api:8111"]
+
+  - job_name: kyc-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-kyc-service:8121"]
+
+  - job_name: kyc-dlq-processor
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["finflow-kyc-dlq-processor:8122"]

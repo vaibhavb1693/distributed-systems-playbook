@@ -3,7 +3,7 @@ package com.vaibhav.idempotent.loanprocessing.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaibhav.idempotent.loanprocessing.dto.CreditScoreReceivedEvent;
 import com.vaibhav.idempotent.loanprocessing.repository.LoanApplicationRepository;
-import com.vaibhav.idempotent.loanprocessing.repository.ProcessedCreditEventRepository;
+import com.vaibhav.idempotent.loanprocessing.service.ProcessedCreditEventInsertService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +29,7 @@ public class CreditScoreReceivedConsumer {
 
     private static final String STRATEGY = "db-unique-constraint";
 
-    private final ProcessedCreditEventRepository processedCreditEventRepository;
+    private final ProcessedCreditEventInsertService processedCreditEventInsertService;
     private final LoanApplicationRepository loanApplicationRepository;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
@@ -46,13 +46,12 @@ public class CreditScoreReceivedConsumer {
         UUID loanId = UUID.fromString(event.loanId());
 
         try {
-            processedCreditEventRepository.insertOrThrow(eventId, loanId, LocalDateTime.now());
+            // REQUIRES_NEW, its own physical transaction — see ProcessedCreditEventInsertService's
+            // javadoc for why that's required (not just a style preference) to avoid
+            // UnexpectedRollbackException when this catch block returns normally.
+            processedCreditEventInsertService.insertOrThrow(eventId, loanId, LocalDateTime.now());
         } catch (DataIntegrityViolationException e) {
             log.info("Duplicate suppressed (DB unique constraint): eventId={} loanId={}", eventId, loanId);
-            // The constraint violation already aborted this transaction at the Postgres
-            // level; since nothing else runs in this branch, letting the method return
-            // normally is safe — Postgres treats COMMIT of an already-aborted transaction
-            // as an implicit ROLLBACK, so no partial state can leak from this attempt.
             recordMetric("duplicate");
             return;
         }

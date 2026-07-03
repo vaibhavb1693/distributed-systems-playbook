@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -36,6 +37,7 @@ public class LoanDecisionMadeConsumer {
             groupId = "loan-processing-service",
             containerFactory = "kafkaListenerContainerFactory"
     )
+    @Transactional
     public void onLoanDecisionMade(ConsumerRecord<String, String> record) throws Exception {
         LoanDecisionMadeEvent event = objectMapper.readValue(record.value(), LoanDecisionMadeEvent.class);
         UUID loanId = UUID.fromString(event.loanId());
